@@ -76,30 +76,54 @@ flowchart TD
 ## 2. Cấu trúc repository
 
 ```
-Firmware/MakefileFW/                          ← Firmware STM32 (SPI Slave)
+Firmware/MakefileFW/                          ← Gốc repository (git repo root)
 ├── README.md                                 ← Tài liệu này
-├── Makefile                                  # Quy tắc biên dịch
-├── STM32F446RE_FLASH.ld                      # Linker script: FLASH @ 0x08010000
+├── readme.txt                                ← Tệp readme gốc (giữ lại)
+├── Makefile                                  # Quy tắc biên dịch firmware
+├── STM32F446RE_FLASH.ld                      # Linker script: FLASH @ 0x08010000, RAM @ 0x20000000
 ├── startup_stm32f446xx.s                     # Vector table + Reset_Handler
-├── inc/                                      # Header firmware
-│   ├── configuration.h remora.h module.h gpio.h spi.h timer.h
-│   ├── digitalpin.h pwm.h qei.h resetpin.h estop.h
-│   ├── miniprintf.h usart.h config.h
-├── src/                                      # Source firmware
-│   ├── main.c spi.c timer.c module.c system_stm32f4xx.c
-│   ├── stepgen.c digitalpin.c pwm.c qei.c resetpin.c estop.c
-│   ├── usart.c config.c miniprintf.c
-└── build/                                    # Build artifacts — không commit
-
-linuxcnc/flexi/                               ← LinuxCNC HAL component (SPI Master)
-├── flexi.c                                   # HAL component chính
-├── flexi.h                                   # Hằng số, cấu trúc SPI, tên pins
-├── bcm2835.c / bcm2835.h                     # Driver SPI/GPIO cho Pi 3/4
-├── rp1lib.c / rp1lib.h                       # Driver RP1 cho Pi 5
-├── gpiochip_rp1.c / gpiochip_rp1.h
-├── spi-dw.c / spi-dw.h                       # Driver SPI DesignWare cho Pi 5
-├── compileComp                               # Script biên dịch halcomponent
-└── README (nếu có)
+├── .gitignore                                # Loại trừ build artifacts
+├── DS_stm32f446mc.pdf                        # Datasheet STM32F446 (tham chiếu)
+├── dm00135183.pdf                            # Datasheet STM32F4 (tham chiếu)
+├── inc/                                      # Header firmware (SPI Slave)
+│   ├── configuration.h
+│   ├── remora.h                              # Union rxData_t / txData_t, header PRU_*
+│   ├── module.h                              # Module base class
+│   ├── gpio.h                                # GPIOPin + driver
+│   ├── spi.h                                 # SPI1 slave DMA API
+│   ├── timer.h                               # Timer init/start/stop, ISR
+│   ├── digitalpin.h                          # Digital I/O
+│   ├── pwm.h                                 # Software PWM
+│   ├── qei.h                                 # QEI encoder
+│   ├── resetpin.h                            # Reset pin
+│   ├── estop.h                               # eStop
+│   ├── miniprintf.h                          # Minimal printf
+│   ├── usart.h                               # USART1 stdio
+│   └── config.h                              # JSON config struct
+├── src/                                      # Source firmware (SPI Slave)
+│   ├── main.c                                # State machine, main loop, watchdog
+│   ├── spi.c                                 # SPI1 slave DMA + Flexi protocol
+│   ├── timer.c                               # TIM9/TIM10/TIM11/TIM2 ISR
+│   ├── module.c                              # module_init()
+│   ├── system_stm32f4xx.c                    # Clock init HSE→PLL→168MHz
+│   ├── stepgen.c                             # DDS stepgen (5 joints)
+│   ├── digitalpin.c                          # 10 DO + 11 DI
+│   ├── pwm.c                                 # Software PWM spindle
+│   ├── qei.c                                 # TIM2 hardware encoder mode
+│   ├── resetpin.c                            # Reset pin PC_3
+│   ├── estop.c                               # eStop PA_2
+│   ├── usart.c                               # USART1 115200 baud
+│   ├── config.c                              # JSON config parser
+│   └── miniprintf.c                          # Minimal printf
+├── build/                                    # Build artifacts (.o, .elf, .hex, .bin) — không commit
+└── linuxcnc/flexi/                           # LinuxCNC HAL component (SPI Master, chạy trên Pi4)
+    ├── flexi.c                               # HAL component chính
+    ├── flexi.h                               # Hằng số SPI, cấu trúc, tên pins
+    ├── bcm2835.c / bcm2835.h                 # Driver SPI/GPIO Pi 3/4
+    ├── rp1lib.c / rp1lib.h                   # Driver RP1 Pi 5
+    ├── gpiochip_rp1.c / gpiochip_rp1.h
+    ├── spi-dw.c / spi-dw.h                   # Driver SPI DesignWare Pi 5
+    └── compileComp                           # Script biên dịch halcomponent
 ```
 
 ---
