@@ -1,8 +1,10 @@
 # STM32F446RE Bare-Metal Firmware for LinuxCNC (Flexi-HAL)
 
-Firmware bare-metal viết lại từ Mbed OS (Remora-OS5) cho STM32F446RE, chạy như một **SPI Slave** giao tiếp với LinuxCNC qua thành phần HAL `flexi.c`. Dự án phục vụ nghiên cứu học thuật, không sử dụng Mbed OS, không cấp phát động, truy cập thanh ghi trực tiếp.
+Firmware bare-metal viết lại từ Mbed OS (Remora-OS5) cho STM32F446RE, chạy như một **SPI Slave** giao tiếp với LinuxCNC qua thành phần HAL `flexi.c`.
 
-**Mục tiêu:** Thay thế toàn bộ stack Mbed OS bằng mã C thuần clàng, build bằng `arm-none-eabi-gcc` qua Makefile, chạy trên STM32F446RE (Cortex-M4F).
+**Mô hình hệ thống:** Raspberry Pi 4 chạy LinuxCNC (SPI Master) ↔ STM32F446RE (SPI Slave, bare-metal). Pi4 là máy chủ điều khiển CNC, STM32 là bộ điều khiển thời gian thực thực hiện bước động cơ (stepgen), đọc encoder (QEI), điều khiển I/O kỹ thuật số, PWM, eStop và reset.
+
+**Mục tiêu:** Thay thế toàn bộ stack Mbed OS bằng mã C thuần, build bằng `arm-none-eabi-gcc` qua Makefile, chạy trên STM32F446RE (Cortex-M4F). Dự án phục vụ nghiên cứu học thuật, không sử dụng Mbed OS, không cấp phát động, truy cập thanh ghi trực tiếp.
 
 ---
 
@@ -10,9 +12,9 @@ Firmware bare-metal viết lại từ Mbed OS (Remora-OS5) cho STM32F446RE, ch�
 
 ```mermaid
 flowchart TD
-    subgraph LinuxCNC["LinuxCNC (Pi4/PC) - SPI Master"]
+    subgraph Pi4["Raspberry Pi 4 - Chạy LinuxCNC (SPI Master)"]
         HAL[flexi.c HAL component]
-        SPI_M[SPI Master]
+        SPI_M[SPI Master - BCM2711 SPI0]
     end
 
     subgraph STM32["STM32F446RE - SPI Slave (bare-metal)"]
@@ -44,10 +46,10 @@ flowchart TD
         end
     end
 
-    LinuxCNC --> MOSI
-    LinuxCNC <-- MISO
-    LinuxCNC --> SCK
-    LinuxCNC --> NSS
+    Pi4 --> MOSI
+    Pi4 <-- MISO
+    Pi4 --> SCK
+    Pi4 --> NSS
 
     MOSI --> DMA_RX
     DMA_TX --> MISO
@@ -62,13 +64,21 @@ flowchart TD
     TIM10 --> RST
 ```
 
+### Vai trò mỗi bên
+
+| Thành phần | Vai trò | Nơi chạy |
+|------------|---------|----------|
+| **LinuxCNC** | Điều khiển CNC, tạo lệnh bước động (step pulses), đọc phản hồi | Raspberry Pi 4 (SPI Master) |
+| **flexi.c** | HAL component LinuxCNC, giao tiếp SPI với STM32 | Raspberry Pi 4 |
+| **STM32F446RE** | Thực hiện stepgen, QEI, digital I/O, PWM, eStop, reset | SPI Slave (bare-metal) |
+
 ### Luồng dữ liệu SPI
 
-1. **LinuxCNC (Master)** gửi 64 bytes qua MOSI (PRU_WRITE / PRU_READ / PRU_ESTOP).
-2. **DMA2 Stream 0 (RX)** ghi trực tiếp vào `rxData.rxBuffer[64]`.
+1. **Pi4 / LinuxCNC (Master)** gửi 64 bytes qua MOSI (PRU_WRITE / PRU_READ / PRU_ESTOP).
+2. **DMA2 Stream 0 (RX)** trên STM32 ghi trực tiếp vào `rxData.rxBuffer[64]`.
 3. NSS rising edge → **EXTI15_10 IRQ** → `spi_process_packet()` phân tích header.
 4. Nếu `PRU_READ`/`PRU_WRITE`: `spi_prepare_data_response()` chụp ảnh chớp (`tx_shadow`) các feedback vào bộ nhớ DMA TX.
-5. **DMA2 Stream 3 (TX)** gửi `tx_shadow` về MISO cho LinuxCNC (PRU_DATA + jointFeedback + inputs + processVariable).
+5. **DMA2 Stream 3 (TX)** gửi `tx_shadow` về MISO cho Pi4 (PRU_DATA + jointFeedback + inputs + processVariable).
 
 ---
 
@@ -115,7 +125,7 @@ Firmware/MakefileFW/
 
 ---
 
-## 3. Khái niệm kỹ thuật cốt बोल
+## 3. Khái niệm kỹ thuật cốt lõi
 
 | Thành phần | Chi tiết |
 |------------|----------|
@@ -171,7 +181,7 @@ ST_STOP → ST_IDLE (tự động quay lại IDLE)
 
 ## 6. SPI Flexi Protocol
 
-Giao diện với LinuxCNC `flexi.c` HAL component. Bố trí 64 bytes giống hệt firmware Mbed gốc.
+Giao diện với LinuxCNC `flexi.c` HAL component (chạy trên Pi4). Bố trí 64 bytes giống hệt firmware Mbed gốc.
 
 ### rxData (Master → Slave, 64 bytes)
 
@@ -240,7 +250,7 @@ make flash   # flash qua st-flash @ 0x08010000
 3. **`-ffreestanding -nostdlib`:** Cung cấp `_write`, `_exit` nếu cần (nano.specs/nosys.specs).
 4. **Bố trí SPI không thay đổi:** `rxData_t`/`txData_t` packed union giữ nguyên layout như Mbed `remora.h` để LinuxCNC HAL component hoạt động không đổi.
 5. **ISR ngắn gọn:** Chỉ clear flag, chạy module, trả về. Không in printf trong ISR.
-6. **Thanh ghi xác thực:** Địa chỉ thanh ghi theo STM32F446RE Reference Manual (RM0390), không猜测.
+6. **Thanh ghi xác thực:** Địa chỉ thanh ghi theo STM32F446RE Reference Manual (RM0390), không đoán.
 
 ---
 
