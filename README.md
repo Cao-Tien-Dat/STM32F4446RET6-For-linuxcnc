@@ -44,15 +44,15 @@ flowchart TD
         end
     end
 
-    LinuxCNC -->|MOSI| MOSI
-    LinuxCNC <--|MISO| MISO
-    LinuxCNC -->|SCK| SCK
-    LinuxCNC -->|NSS| NSS
+    LinuxCNC --> MOSI
+    LinuxCNC <-- MISO
+    LinuxCNC --> SCK
+    LinuxCNC --> NSS
 
     MOSI --> DMA_RX
     DMA_TX --> MISO
     NSS --> EXTI
-    EXTI -->|header switch| Modules
+    EXTI --> Modules
     TIM9 --> STEP
     TIM9 --> QEI
     TIM10 --> DIN
